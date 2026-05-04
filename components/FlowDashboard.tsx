@@ -1,5 +1,33 @@
 "use client";
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import * as htmlToImage from "html-to-image";
+import jsPDF from "jspdf";
+import dagre from "dagre";
+import { Position } from "@xyflow/react"; // Import Position enum
+// Layout helper
+const dagreGraph = new dagre.graphlib.Graph();
+dagreGraph.setDefaultEdgeLabel(() => ({}));
+const nodeWidth = 220;
+const nodeHeight = 80;
+function getLayoutedElements(nodes: Node[], edges: Edge[], direction: "LR" | "TB") {
+  dagreGraph.setGraph({ rankdir: direction });
+  nodes.forEach((node) => {
+    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+  });
+  edges.forEach((edge) => {
+    dagreGraph.setEdge(edge.source, edge.target);
+  });
+  dagre.layout(dagreGraph);
+  return nodes.map((node) => {
+    const pos = dagreGraph.node(node.id);
+    return {
+      ...node,
+      position: { x: pos.x - nodeWidth / 2, y: pos.y - nodeHeight / 2 },
+      sourcePosition: direction === "TB" ? Position.Bottom : Position.Right,
+      targetPosition: direction === "TB" ? Position.Top : Position.Left,
+    };
+  });
+}
 import {
   ReactFlow, Background, Controls, MiniMap, BackgroundVariant,
   addEdge, useNodesState, useEdgesState,
@@ -16,6 +44,9 @@ const STATUS_COLORS: Record<string, string> = {
   planning: "#ffd60a", coding: "#00f5d4", testing: "#f72585",
   review: "#7b2fff", deploying: "#ff6b35", done: "#06ffa5",
 };
+
+const LOCAL_NODES_KEY = "flow-nodes";
+const LOCAL_EDGES_KEY = "flow-edges";
 
 const INITIAL_NODES: Node[] = [
   { id: "1", type: "custom", position: { x: 80, y: 180 }, data: { label: "Plan Feature", status: "planning", description: "Define scope, write tickets" } },
@@ -38,12 +69,49 @@ const INITIAL_EDGES: Edge[] = [
 ];
 
 export default function FlowDashboard() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(INITIAL_NODES);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(INITIAL_EDGES);
+
+  // Load from localStorage if available
+  const getInitialNodes = () => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(LOCAL_NODES_KEY);
+      if (saved) {
+        try { return JSON.parse(saved); } catch {}
+      }
+    }
+    return INITIAL_NODES;
+  };
+  const getInitialEdges = () => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(LOCAL_EDGES_KEY);
+      if (saved) {
+        try { return JSON.parse(saved); } catch {}
+      }
+    }
+    return INITIAL_EDGES;
+  };
+  const [nodes, setNodes, onNodesChange] = useNodesState(getInitialNodes());
+  const [edges, setEdges, onEdgesChange] = useEdgesState(getInitialEdges());
+    // Persist nodes and edges to localStorage on change
+    useEffect(() => {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(LOCAL_NODES_KEY, JSON.stringify(nodes));
+      }
+    }, [nodes]);
+    useEffect(() => {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(LOCAL_EDGES_KEY, JSON.stringify(edges));
+      }
+    }, [edges]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [layoutDirection, setLayoutDirection] = useState<"LR" | "TB">("LR");
   const idRef = useRef(20);
   const isDark = theme === "dark";
+  // Layout toggle handler
+  const handleToggleLayout = useCallback(() => {
+    setNodes(nds => getLayoutedElements(nds, edges, layoutDirection === "LR" ? "TB" : "LR"));
+    setLayoutDirection(dir => (dir === "LR" ? "TB" : "LR"));
+  }, [edges, layoutDirection, setNodes]);
 
   const onConnect = useCallback((params: Connection) => {
     const sourceNode = nodes.find(n => n.id === params.source);
@@ -62,8 +130,9 @@ export default function FlowDashboard() {
   const handleAddNode = useCallback((status: string) => {
     const id = String(++idRef.current);
     const labels: Record<string, string> = {
-      planning: "New Plan", coding: "New Feature", testing: "New Tests",
+      function: "Function", element: "Element", testing: "New Tests",
       review: "New Review", deploying: "New Deploy", done: "Completed",
+      and: "AND Gate", or: "OR Gate", not: "NOT Gate", xor: "XOR Gate"
     };
     setNodes(nds => [...nds, {
       id, type: "custom",
@@ -85,6 +154,39 @@ export default function FlowDashboard() {
 
   const bgColor = isDark ? "#0a0a0f" : "#f4f4ff";
 
+  // Export handlers
+  const flowWrapperRef = useRef<HTMLDivElement>(null);
+
+  const handleExportImage = async () => {
+    const node = flowWrapperRef.current;
+    if (!node) return;
+    try {
+      const dataUrl = await htmlToImage.toPng(node, { cacheBust: true });
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = "devflow-diagram.png";
+      link.click();
+    } catch (err) {
+      alert("Export failed: " + err);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    const node = flowWrapperRef.current;
+    if (!node) return;
+    try {
+      const dataUrl = await htmlToImage.toPng(node, { cacheBust: true });
+      const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: "a4" });
+      const imgProps = pdf.getImageProperties(dataUrl);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      pdf.addImage(dataUrl, "PNG", 0, 0, pdfWidth, pdfHeight);
+      pdf.save("devflow-diagram.pdf");
+    } catch (err) {
+      alert("Export failed: " + err);
+    }
+  };
+
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative", background: bgColor, transition: "background 0.3s" }}>
       <Toolbar
@@ -93,9 +195,13 @@ export default function FlowDashboard() {
         edgeCount={edges.length}
         theme={theme}
         onToggleTheme={() => setTheme(t => t === "dark" ? "light" : "dark")}
+        onExportImage={handleExportImage}
+        onExportPDF={handleExportPDF}
+        layoutDirection={layoutDirection}
+        onToggleLayout={handleToggleLayout}
       />
 
-      <div style={{ position: "absolute", inset: 0, top: "60px" }}>
+      <div ref={flowWrapperRef} style={{ position: "absolute", inset: 0, top: "60px" }}>
         <ReactFlow
           nodes={nodes} edges={edges}
           onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
@@ -136,4 +242,4 @@ export default function FlowDashboard() {
       )}
     </div>
   );
-}
+};

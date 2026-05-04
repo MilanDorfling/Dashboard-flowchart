@@ -1,12 +1,17 @@
 "use client";
 
 const NODE_TYPES = [
-  { status: "planning",  label: "Plan",   icon: "◈",    color: "#ffd60a" },
-  { status: "coding",    label: "Code",   icon: "⟨/⟩",  color: "#00f5d4" },
-  { status: "testing",   label: "Test",   icon: "⚡",   color: "#f72585" },
-  { status: "review",    label: "Review", icon: "◎",    color: "#7b2fff" },
-  { status: "deploying", label: "Deploy", icon: "▲",    color: "#ff6b35" },
-  { status: "done",      label: "Done",   icon: "✦",    color: "#06ffa5" },
+  { status: "function", label: "Function", icon: "fn()", color: "#00f5d4" },
+  { status: "element", label: "Element", icon: "<El />", color: "#ffd60a" },
+  { status: "testing", label: "Test", icon: "⚡", color: "#f72585" },
+  { status: "review", label: "Review", icon: "◎", color: "#7b2fff" },
+  { status: "deploying", label: "Deploy", icon: "▲", color: "#ff6b35" },
+  { status: "done", label: "Done", icon: "✦", color: "#06ffa5" },
+  // Logic gates
+  { status: "and", label: "AND Gate", icon: "∧", color: "#ffb300" },
+  { status: "or", label: "OR Gate", icon: "≥1", color: "#1976d2" },
+  { status: "not", label: "NOT Gate", icon: "¬", color: "#d32f2f" },
+  { status: "xor", label: "XOR Gate", icon: "⊕", color: "#7b1fa2" },
 ];
 
 type Props = {
@@ -15,9 +20,13 @@ type Props = {
   edgeCount: number;
   theme: "dark" | "light";
   onToggleTheme: () => void;
+  onExportImage?: () => void;
+  onExportPDF?: () => void;
+  layoutDirection?: "LR" | "TB";
+  onToggleLayout?: () => void;
 };
 
-export default function Toolbar({ onAddNode, nodeCount, edgeCount, theme, onToggleTheme }: Props) {
+export default function Toolbar({ onAddNode, nodeCount, edgeCount, theme, onToggleTheme, onExportImage, onExportPDF, layoutDirection, onToggleLayout }: Props) {
   const isDark = theme === "dark";
   const surface = isDark ? "rgba(10,10,15,0.92)" : "rgba(255,255,255,0.92)";
   const borderColor = isDark ? "#2a2a3d" : "#e2e2ef";
@@ -47,7 +56,34 @@ export default function Toolbar({ onAddNode, nodeCount, edgeCount, theme, onTogg
         }}>DevFlow</span>
       </div>
 
+
       <div style={{ width: "1px", height: "28px", background: borderColor, marginRight: "24px" }} />
+
+      {/* Export & Layout buttons */}
+      <div style={{ display: "flex", gap: "8px", marginRight: "16px" }}>
+        <button onClick={onExportImage} style={{
+          background: "#fff2", border: `1px solid ${borderColor}`,
+          color: textColor, borderRadius: "6px", padding: "5px 12px", fontSize: "11px",
+          fontFamily: "'Space Mono', monospace", fontWeight: 700, cursor: "pointer"
+        }}>
+          Export Image
+        </button>
+        <button onClick={onExportPDF} style={{
+          background: "#fff2", border: `1px solid ${borderColor}`,
+          color: textColor, borderRadius: "6px", padding: "5px 12px", fontSize: "11px",
+          fontFamily: "'Space Mono', monospace", fontWeight: 700, cursor: "pointer"
+        }}>
+          Export PDF
+        </button>
+        <button onClick={onToggleLayout} style={{
+          background: "#fff2", border: `1px solid ${borderColor}`,
+          color: textColor, borderRadius: "6px", padding: "5px 12px", fontSize: "11px",
+          fontFamily: "'Space Mono', monospace", fontWeight: 700, cursor: "pointer"
+        }}>
+          Layout: {layoutDirection === "TB" ? "Top-Down" : "Left-Right"}
+        </button>
+      </div>
+
 
       <span style={{ fontSize: "10px", color: mutedColor, marginRight: "12px", letterSpacing: "0.1em", textTransform: "uppercase" }}>
         Add Node
